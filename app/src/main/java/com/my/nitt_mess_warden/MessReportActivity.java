@@ -51,11 +51,11 @@ public class MessReportActivity extends AppCompatActivity {
     FirebaseUser User;
     AppCompatButton button;
     String MessId;
-    Float Price;
+    float Price, Breakfast, Lunch, Snack, Dinner;
     List<String> Students;
     Map<String, String> StudentName;
     Map<String, Integer> StudentOnLeave;
-    Map<String, Integer> StudentGuest;
+    Map<String, Map<String, Integer>> StudentGuest;
 
 
     @Override
@@ -65,6 +65,7 @@ public class MessReportActivity extends AppCompatActivity {
         MessId = getIntent().getStringExtra("MessId");
         filePath = new File(Environment.getExternalStorageDirectory() + "/Report.xls");
         MonthData = findViewById(R.id.picker_month);
+        Price = Breakfast = Lunch = Snack = Dinner = 0;
         YearData = findViewById(R.id.picker_year);
         User = FirebaseAuth.getInstance().getCurrentUser();
         button = findViewById(R.id.GenerateReport);
@@ -85,18 +86,24 @@ public class MessReportActivity extends AppCompatActivity {
     }
 
     private void getMessPrice() {
-        Month = Integer.parseInt(MonthData.getText().toString())-1;
+        Month = Integer.parseInt(MonthData.getText().toString()) - 1;
         Year = Integer.parseInt(YearData.getText().toString());
-        DatabaseReference mDatabase = FirebaseDatabase.getInstance().getReference("Data/Mess").child(MessId).child("Price");
+        DatabaseReference mDatabase = FirebaseDatabase.getInstance().getReference("Data/Mess").child(MessId);
         mDatabase.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NotNull DataSnapshot data) {
                 if (data.exists()) {
-                    Price = data.getValue(Float.class);
+                    if(data.hasChild("Price")) {
+                        Price = data.child("Price").getValue(Integer.class);
+                    }
+                    if(data.hasChild("GuestPrice")){
+                        Breakfast = data.child("GuestPrice").child("Breakfast").getValue(Integer.class);
+                        Lunch = data.child("GuestPrice").child("Lunch").getValue(Integer.class);
+                        Snack = data.child("GuestPrice").child("Snack").getValue(Integer.class);
+                        Dinner = data.child("GuestPrice").child("Dinner").getValue(Integer.class);
+                    }
                     getAllStudent();
-                    Log.d("DDDDDDD","DDDDDDd");
-                }
-                else
+                } else
                     button.setVisibility(View.VISIBLE);
             }
 
@@ -106,6 +113,7 @@ public class MessReportActivity extends AppCompatActivity {
             }
         });
     }
+
     private void getAllStudent() {
         DatabaseReference mDatabase = FirebaseDatabase.getInstance().getReference("Data/AllocatedMessHistory").child(MessId).child(Year + "/" + Month);
         mDatabase.addValueEventListener(new ValueEventListener() {
@@ -116,12 +124,16 @@ public class MessReportActivity extends AppCompatActivity {
                         Students.add(d.getKey());
                         StudentName.put(d.getKey(), d.getValue(String.class));
                         StudentOnLeave.put(d.getKey(), 0);
-                        StudentGuest.put(d.getKey(), 0);
+                        Map<String, Integer> details = new HashMap<>();
+                        details.put("Breakfast", 0);
+                        details.put("Lunch", 0);
+                        details.put("Snack", 0);
+                        details.put("Dinner", 0);
+                        StudentGuest.put(d.getKey(), details);
                     }
                     getStudentOnLeave();
-                    Log.d("DDDDDDD","DDDDDDd");
-                }
-                else
+                    Log.d("DDDDDDD", "DDDDDDd");
+                } else
                     button.setVisibility(View.VISIBLE);
             }
 
@@ -144,7 +156,7 @@ public class MessReportActivity extends AppCompatActivity {
                         }
                     }
                 }
-                Log.d("DDDDDDD","DDDDDDd");
+                Log.d("DDDDDDD", "DDDDDDd");
                 getStudentGuestCount();
             }
 
@@ -156,19 +168,25 @@ public class MessReportActivity extends AppCompatActivity {
     }
 
     private void getStudentGuestCount() {
-        DatabaseReference mDatabase = FirebaseDatabase.getInstance().getReference("Data/StudentOnLeave").child(MessId).child(Year + "/" + Month);
+        DatabaseReference mDatabase = FirebaseDatabase.getInstance().getReference("Data/Guest").child(MessId).child(Year + "/" + Month);
         mDatabase.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NotNull DataSnapshot data) {
                 if (data.exists()) {
                     for (DataSnapshot d : data.getChildren()) {
                         for (DataSnapshot roll : d.getChildren()) {
-                            StudentGuest.put(roll.getKey(), StudentGuest.get(roll.getKey()) + roll.getValue(Integer.class));
+                            Map<String, Integer> details = StudentGuest.get(roll.getKey());
+                            if (roll.hasChild("Breakfast"))
+                                details.put("Breakfast", details.get("Breakfast") + roll.child("Breakfast").getValue(Integer.class));
+                            if (roll.hasChild("Lunch"))
+                                details.put("Lunch", details.get("Lunch") + roll.child("Lunch").getValue(Integer.class));
+                            if (roll.hasChild("Snack"))
+                                details.put("Snack", details.get("Snack") + roll.child("Snack").getValue(Integer.class));
+                            if (roll.hasChild("Dinner"))
+                                details.put("Dinner", details.get("Dinner") + roll.child("Dinner").getValue(Integer.class));
                         }
                     }
                 }
-
-                Log.d("DDDDDDD","DDDDDDd");
                 buttonCreateExcel();
             }
 
@@ -180,7 +198,6 @@ public class MessReportActivity extends AppCompatActivity {
     }
 
     public void buttonCreateExcel() {
-        Log.d("DDDDDDD","DDDDDDd");
         button.setVisibility(View.VISIBLE);
         HSSFWorkbook hssfWorkbook = new HSSFWorkbook();
         HSSFSheet hssfSheet = hssfWorkbook.createSheet("Mess Report");
@@ -188,9 +205,12 @@ public class MessReportActivity extends AppCompatActivity {
         hssfRow.createCell(0).setCellValue("Roll No");
         hssfRow.createCell(1).setCellValue("Name");
         hssfRow.createCell(2).setCellValue("Leaves Taken");
-        hssfRow.createCell(3).setCellValue("Guest QR");
+        hssfRow.createCell(3).setCellValue("Guest Breakfast");
+        hssfRow.createCell(3).setCellValue("Guest Lunch");
+        hssfRow.createCell(3).setCellValue("Guest Snack");
+        hssfRow.createCell(3).setCellValue("Guest Dinner");
         hssfRow.createCell(4).setCellValue("Amount");
-        GregorianCalendar calendar = new GregorianCalendar(Year,Month,1);
+        GregorianCalendar calendar = new GregorianCalendar(Year, Month, 1);
 
         int i = 1;
         for (String R : Students) {
@@ -198,8 +218,14 @@ public class MessReportActivity extends AppCompatActivity {
             row.createCell(0).setCellValue(R);
             row.createCell(1).setCellValue(StudentName.get(R));
             row.createCell(2).setCellValue(StudentOnLeave.get(R));
-            row.createCell(3).setCellValue(StudentGuest.get(R));
-            row.createCell(4).setCellValue((calendar.getActualMaximum(Calendar.DAY_OF_MONTH)-StudentOnLeave.get(R)+StudentGuest.get(R))*Price);
+            row.createCell(3).setCellValue(StudentGuest.get(R).get("Breakfast"));
+            row.createCell(3).setCellValue(StudentGuest.get(R).get("Lunch"));
+            row.createCell(3).setCellValue(StudentGuest.get(R).get("Snack"));
+            row.createCell(3).setCellValue(StudentGuest.get(R).get("Dinner"));
+            float G =  StudentGuest.get(R).get("Breakfast")*Breakfast +
+                    StudentGuest.get(R).get("Lunch")*Lunch +
+                    StudentGuest.get(R).get("Snack")*Snack + StudentGuest.get(R).get("Dinner")*Dinner;
+                    row.createCell(4).setCellValue((calendar.getActualMaximum(Calendar.DAY_OF_MONTH) - StudentOnLeave.get(R)) * Price + G);
             i += 1;
         }
         Environment.getExternalStorageState();
